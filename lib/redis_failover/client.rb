@@ -455,8 +455,16 @@ module RedisFailover
     #   nested blocks (e.g., block passed to multi).
     def client_for(method)
       stack = Thread.current[@current_client_key] ||= []
-      client = if stack.last
-        stack.last
+      if last_in_stack = stack.last
+        @lock.synchronize do
+          if @master.nil? || @slaves.empty?
+            last_in_stack = nil
+            Thread.current[@current_client_key].clear
+          end
+        end
+      end
+      client = if last_in_stack
+        last_in_stack
       elsif @master_only
         master
       elsif REDIS_READ_OPS.include?(method)
